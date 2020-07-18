@@ -14,6 +14,9 @@ token_re = [
     ("{", r'\{'),
     ("}", r'\}'),
     ("=", r'='),
+    ("==", r'=='),
+    ("+=", r'\+='),
+    ("-=", r'-='),
     ("void", r'void'),
     ("byte", r'byte'),
     ("inline_asm", r'inline_asm'),
@@ -56,8 +59,8 @@ def assert_get(tokens, i, type):
         for t in type:
             if tokens[i][0] == t:
                 return (i+1, tokens[i][1])
-            print("got a " + tokens[i][0] + ", which was " + tokens[i][1] + " instead one of " + str(type))
-            sys.exit(1)
+        print("got a " + tokens[i][0] + ", which was " + tokens[i][1] + " instead one of " + str(type))
+        sys.exit(1)
     if tokens[i][0] != type:
         print("got a " + tokens[i][0] + ", which was " + tokens[i][1] + " instead of " + type)
         sys.exit(1)
@@ -104,8 +107,13 @@ def parse_statement(tokens, i):
         (i, _) = assert_get(tokens, i, ")")
         (i, body) = assert_get(tokens, i, "asm_body")
         return (i, {"type": "inline_asm", "params": params, "body": body})
+    elif tokens[i][0] == "byte":
+        # this is a local variable declaration
+        (i, _) = assert_get(tokens, i, "byte")
+        (i, name) = assert_get(tokens, i, "ident")
+        return (i, {"type": "declaration", "name": name})
     elif tokens[i][0] == "ident":
-        # either a variable assignment or a function call
+        # either a variable assignment, a function call
         if tokens[i+1][0] == "(":
             # function call
             (i, name) = assert_get(tokens, i, "ident")
@@ -119,8 +127,10 @@ def parse_statement(tokens, i):
             (i, _) = assert_get(tokens, i, ")")
             return (i, {"type": "call", "name": name, "params": params})
         else:
-            print("don't support assigns right now")
-            sys.exit(1)
+            (i, name) = assert_get(tokens, i, "ident")
+            (i, op) = assert_get(tokens, i, ["=", "+=", "-="])
+            (i, value) = parse_value(tokens, i)
+            return (i, {"type": "assign", "name": name, "op": op, "value": value})
     elif tokens[i][0] == "return":
         (i, _) = assert_get(tokens, i, "return")
         (i, _) = assert_get(tokens, i, "(")
@@ -150,19 +160,38 @@ def parse_statement(tokens, i):
                 else_body.append(s)
             (i, _) = assert_get(tokens, i, "}")
         return (i, {"type": "if", "cond": cond, "than": than_body, "else": else_body})
+    elif tokens[i][0] == "while":
+        (i, _) = assert_get(tokens, i, "while")
+        (i, _) = assert_get(tokens, i, "(")
+        (i, cond) = parse_value(tokens,i)
+        (i, _) = assert_get(tokens, i, ")")
+        (i, _) = assert_get(tokens, i, "{")
+        body = []
+        while tokens[i][0] != "}":
+            (i, s) = parse_statement(tokens, i)
+            body.append(s)
+        (i, _) = assert_get(tokens, i, "}")
+        return (i, {"type": "while", "cond": cond, "body": body})
     else:
         print(tokens[i][1] + "(" + tokens[i][0] + ")" + " is not a statement")
         sys.exit(1)
 def parse_value(tokens, i):
+    to_ret = None
     if tokens[i][0] == "num":
         (i, num) = assert_get(tokens, i, "num")
-        return (i, {"type": "num", "raw": num})
+        to_ret = {"type": "num", "raw": num}
     elif tokens[i][0] == "ident":
         (i, name) = assert_get(tokens, i, "ident")
-        return (i, {"type": "var", "name": name})
+        to_ret = {"type": "var", "name": name}
     else:
         print(tokens[i][1] + "(" + tokens[i][0] + ")" + " is not a value")
         sys.exit(1)
+    if tokens[i][0] == "==":
+        (i, op) = assert_get(tokens, i, "==")
+        (i, other) = parse_value(tokens, i)
+        return (i, {"type": "op", "op": op, "values": [to_ret, other]}) 
+    else:
+        return (i, to_ret)
 
 my_special_id = 0
 def get_id():
@@ -174,7 +203,7 @@ def emit_save_regs():
     save = ""
     restore = ""
     save_label = "savelabel" + get_id()
-    after_label = "savelabel" + get_id()
+    after_label = "afterlabel" + get_id()
     save += "imovi " + save_label + "\n"
     save += "store vF" + "\n"
     save += "jump " + after_label + "\n"
@@ -198,7 +227,7 @@ def emit(tree):
 def emit_function(f, scope):
     new_scope = {}
     new_scope.update(scope)
-    new_scope.update({ p: "v"+hex(i+1)[2:] for (i, p) in enumerate(f["params"])})
+    new_scope.update({ p: "v"+hex(i+3)[2:] for (i, p) in enumerate(f["params"])})
     to_ret = f["name"] + ":\n"
     for s in f["body"]:
         to_ret += emit_statement(s, new_scope)
@@ -207,6 +236,28 @@ def emit_function(f, scope):
 def emit_statement(s, scope):
     if s["type"] == "return":
         return emit_value(s["value"], scope) + "return\n"
+    elif s["type"] == "declaration":
+        for i in range(3, 16):
+            name = "v"+hex(i)[2:]
+            if name not in scope.values():
+                scope[s["name"]] = name
+                break
+        else:
+            print("couldn't find a free register for variable " + name + ", scope is " + str(scope))
+            sys.exit(1)
+        return ""
+    elif s["type"] == "assign":
+        to_ret = emit_value(s["value"], scope)
+        if s["op"] == "=":
+            to_ret += "movr " + scope[s["name"]] + " v0\n"
+        elif s["op"] == "+=":
+            to_ret += "addr " + scope[s["name"]] + " v0\n"
+        elif s["op"] == "-=":
+            to_ret += "subr " + scope[s["name"]] + " v0\n"
+        else:
+            print("assign does not support op " + s["op"])
+            sys.exit(1)
+        return to_ret
     elif s["type"] == "inline_asm":
         to_ret = ""
         (save, restore) = emit_save_regs()
@@ -244,6 +295,20 @@ def emit_statement(s, scope):
             to_ret += emit_statement(si, new_scope)
         to_ret += afterelse + ":\n"
         return to_ret
+    elif s["type"] == "while":
+        whiletop = "whiletop" + get_id()
+        whileend = "whileend" + get_id()
+        to_ret = whiletop + ":\n"
+        to_ret += emit_value(s["cond"], scope)
+        to_ret += "snei v0 0\n"
+        to_ret += "jump " + whileend + "\n"
+        new_scope = {}
+        new_scope.update(scope)
+        for si in s["body"]:
+            to_ret += emit_statement(si, new_scope)
+        to_ret += "jump " + whiletop + "\n"
+        to_ret += whileend + ":\n"
+        return to_ret
     else:
         print("what sort of statement is " + str(s))
         sys.exit(1)
@@ -253,6 +318,19 @@ def emit_value(v, scope):
         return "movi v0 " + v["raw"] + "\n"
     elif v["type"] == "var":
         return "movr v0 " + scope[v["name"]] + "\n"
+    elif v["type"] == "op":
+        to_ret = emit_value(v["values"][0], scope)
+        to_ret += "movr v1 v0\n"
+        to_ret += emit_value(v["values"][1], scope)
+        to_ret += "movr v2 v0\n"
+        if v["op"] == "==":
+            to_ret += "movi v0 0\n"
+            to_ret += "sner v1 v2\n"
+            to_ret += "movi v0 1\n"
+        else:
+            print("cannot emit op " + v["op"])
+            sys.exit(1)
+        return to_ret
     else:
         print("what sort of value is " + str(v))
         sys.exit(1)

@@ -8,16 +8,30 @@ void drawhex(num, x ,y) {
 }
 
 void main() {
-    if (1) {
-        drawhex(0xB, 10, 10)
-    } else {
-        drawhex(0xA, 10, 10)
-    }
-    if (1) {
-        drawhex(0xC, 20, 10)
-    }
-    if (0) {
-        drawhex(0xD, 30, 10)
+    byte x
+    byte y
+    byte dx
+    byte dy
+    x = 0
+    y = 0
+    dx = 1
+    dy = 1
+    while (1) {
+        drawhex(0xA, x, y)
+        x += dx
+        y += dy
+        if (x == 40) {
+            byte tmp
+            tmp = 0
+            tmp -= dx
+            dx = tmp
+        }
+        if (y == 20) {
+            byte tmp
+            tmp = 0
+            tmp -= dy
+            dy = tmp
+        }
     }
 }
 
