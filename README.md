@@ -8,14 +8,17 @@ I'm a bit worried it might be too hard to read to get the point accross, but we'
 I am it to be a very basic langauge with C-like syntax.
 
 Done:
+
     * functions, calling functions, parameters
     * inline asm
 
 To Do:
+
     * local variables
     * assignment
     * if
     * while
 
 Non-Goals:
+
     * pointers - chip-8's I register is so wacky
