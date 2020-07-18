@@ -9,16 +9,16 @@ I am it to be a very basic langauge with C-like syntax.
 
 Done:
 
-    * functions, calling functions, parameters
-    * inline asm
+* functions, calling functions, parameters
+* inline asm
 
 To Do:
 
-    * local variables
-    * assignment
-    * if
-    * while
+ * local variables
+ * assignment
+ * if
+ * while
 
 Non-Goals:
 
-    * pointers - chip-8's I register is so wacky
+ * pointers - chip-8's I register is so wacky
