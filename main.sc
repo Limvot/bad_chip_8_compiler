@@ -8,6 +8,16 @@ void drawhex(num, x ,y) {
 }
 
 void main() {
-    drawhex(0xA, 10, 10)
+    if (1) {
+        drawhex(0xB, 10, 10)
+    } else {
+        drawhex(0xA, 10, 10)
+    }
+    if (1) {
+        drawhex(0xC, 20, 10)
+    }
+    if (0) {
+        drawhex(0xD, 30, 10)
+    }
 }
 

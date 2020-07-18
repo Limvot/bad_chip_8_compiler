@@ -18,6 +18,9 @@ token_re = [
     ("byte", r'byte'),
     ("inline_asm", r'inline_asm'),
     ("return", r'return'),
+    ("if", r'if'),
+    ("else", r'else'),
+    ("while", r'while'),
     ("num", r'(0x[0-9A-F]+)|([0-9]+)'),
     ("reg", r'(v[0-9A-F])|I'),
     ("ident", r'\w+'),
@@ -80,7 +83,6 @@ def parse_function(tokens, i):
     (i, _) = assert_get(tokens, i, ")")
     (i, _) = assert_get(tokens, i, "{")
     body = []
-    print("Now parsing function body")
     while tokens[i][0] != "}":
         (i, s) = parse_statement(tokens, i)
         body.append(s)
@@ -128,6 +130,26 @@ def parse_statement(tokens, i):
             value = {"type":"num", "raw": "0"}
         (i, _) = assert_get(tokens, i, ")")
         return (i, {"type": "return", "value": value})
+    elif tokens[i][0] == "if":
+        (i, _) = assert_get(tokens, i, "if")
+        (i, _) = assert_get(tokens, i, "(")
+        (i, cond) = parse_value(tokens,i)
+        (i, _) = assert_get(tokens, i, ")")
+        (i, _) = assert_get(tokens, i, "{")
+        than_body = []
+        while tokens[i][0] != "}":
+            (i, s) = parse_statement(tokens, i)
+            than_body.append(s)
+        (i, _) = assert_get(tokens, i, "}")
+        else_body = []
+        if tokens[i][0] == "else":
+            (i, _) = assert_get(tokens, i, "else")
+            (i, _) = assert_get(tokens, i, "{")
+            while tokens[i][0] != "}":
+                (i, s) = parse_statement(tokens, i)
+                else_body.append(s)
+            (i, _) = assert_get(tokens, i, "}")
+        return (i, {"type": "if", "cond": cond, "than": than_body, "else": else_body})
     else:
         print(tokens[i][1] + "(" + tokens[i][0] + ")" + " is not a statement")
         sys.exit(1)
@@ -203,6 +225,25 @@ def emit_statement(s, scope):
             to_ret += emit_value(v, scope)
             to_ret += "movr v" + str(i+1) + " v0\n"
         return to_ret + "call " + s["name"] + "\n" + restore
+    elif s["type"] == "if":
+        afterthan = "afterthan" + get_id()
+        afterelse = "afterelse" + get_id()
+        to_ret = emit_value(s["cond"],scope)
+        to_ret += "snei v0 0\n"
+        to_ret += "jump " + afterthan + "\n"
+
+        new_scope = {}
+        new_scope.update(scope)
+        for si in s["than"]:
+            to_ret += emit_statement(si, new_scope)
+        to_ret += "jump " + afterelse + "\n"
+        to_ret += afterthan + ":\n"
+        new_scope = {}
+        new_scope.update(scope)
+        for si in s["else"]:
+            to_ret += emit_statement(si, new_scope)
+        to_ret += afterelse + ":\n"
+        return to_ret
     else:
         print("what sort of statement is " + str(s))
         sys.exit(1)
